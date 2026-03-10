@@ -1,14 +1,15 @@
 using System.Collections.Concurrent;
 using System.Text;
-using System.Text.RegularExpressions;
 using CmrCompTool.WebGui.Models;
 
 namespace CmrCompTool.WebGui.Services;
 
 public class FfmpegService
 {
+    private static readonly TimeSpan JobRetention = TimeSpan.FromHours(1);
+
     private readonly ILogger<FfmpegService> _logger;
-    private readonly ConcurrentDictionary<string, JobStatus> _jobs = new();
+    private readonly ConcurrentDictionary<string, (JobStatus Status, DateTimeOffset Created)> _jobs = new();
 
     public FfmpegService(ILogger<FfmpegService> logger)
     {
@@ -17,9 +18,11 @@ public class FfmpegService
 
     public JobStatus StartCompress(string inputPath, string outputPath, int videoKbps)
     {
+        PurgeOldJobs();
+
         var jobId = Guid.NewGuid().ToString("N");
         var status = new JobStatus { JobId = jobId };
-        _jobs[jobId] = status;
+        _jobs[jobId] = (status, DateTimeOffset.UtcNow);
 
         _ = Task.Run(async () =>
         {
@@ -40,27 +43,48 @@ public class FfmpegService
     }
 
     public JobStatus? GetJob(string jobId)
-        => _jobs.TryGetValue(jobId, out var s) ? s : null;
+        => _jobs.TryGetValue(jobId, out var entry) ? entry.Status : null;
+
+    private void PurgeOldJobs()
+    {
+        var cutoff = DateTimeOffset.UtcNow - JobRetention;
+        foreach (var kvp in _jobs)
+        {
+            if (kvp.Value.Created < cutoff && kvp.Value.Status.State != JobState.Running)
+                _jobs.TryRemove(kvp.Key, out _);
+        }
+    }
 
     private async Task RunFfmpegAsync(string inputPath, string outputPath, int videoKbps, JobStatus status)
     {
         // Build ffmpeg args: H.264 + AAC MP4 with bitrate-based video
-        var args = $"-y -i \"{inputPath}\" " +
-                   $"-c:v libx264 -b:v {videoKbps}k -maxrate {videoKbps}k -bufsize {videoKbps * 2}k " +
-                   $"-preset medium -c:a aac -b:a 128k -movflags +faststart " +
-                   $"\"{outputPath}\"";
+        var arguments = new[]
+        {
+            "-y",
+            "-i", inputPath,
+            "-c:v", "libx264",
+            "-b:v", $"{videoKbps}k",
+            "-maxrate", $"{videoKbps}k",
+            "-bufsize", $"{videoKbps * 2}k",
+            "-preset", "medium",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            outputPath
+        };
 
-        _logger.LogInformation("Starting ffmpeg job {JobId}: {Args}", status.JobId, args);
+        _logger.LogInformation("Starting ffmpeg job {JobId}", status.JobId);
 
         using var process = new System.Diagnostics.Process();
         process.StartInfo = new System.Diagnostics.ProcessStartInfo
         {
             FileName = "ffmpeg",
-            Arguments = args,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        foreach (var arg in arguments)
+            process.StartInfo.ArgumentList.Add(arg);
 
         // ffmpeg logs to stderr; capture it for progress
         var logLines = new System.Collections.Generic.Queue<string>();

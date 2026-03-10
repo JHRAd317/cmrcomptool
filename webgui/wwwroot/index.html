@@ -181,12 +181,31 @@
         tbody.innerHTML = '<tr><td colspan="3" style="color:#585b70">No video files found in Downloads.</td></tr>';
         return;
       }
-      tbody.innerHTML = files.map(f => `
-        <tr>
-          <td class="clickable" onclick="selectFile('${escapeHtml(f.fullPath)}')">${escapeHtml(f.name)}</td>
-          <td>${f.sizeMB}</td>
-          <td><button class="btn-sm btn-primary" onclick="selectFile('${escapeHtml(f.fullPath)}')">Select</button></td>
-        </tr>`).join('');
+      // Build rows safely via DOM manipulation to avoid XSS
+      tbody.innerHTML = '';
+      files.forEach(f => {
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        tdName.className = 'clickable';
+        tdName.textContent = f.name;
+        tdName.addEventListener('click', () => selectFile(f.fullPath));
+
+        const tdSize = document.createElement('td');
+        tdSize.textContent = f.sizeMB;
+
+        const tdBtn = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'btn-sm btn-primary';
+        btn.textContent = 'Select';
+        btn.addEventListener('click', () => selectFile(f.fullPath));
+        tdBtn.appendChild(btn);
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdSize);
+        tr.appendChild(tdBtn);
+        tbody.appendChild(tr);
+      });
     } catch(e) {
       err.textContent = 'Failed to load files: ' + e.message;
       err.classList.remove('hidden');
@@ -337,14 +356,18 @@
 
   function pollJob(jobId) {
     clearTimeout(pollTimer);
+    // Guard: skip if already polling a different job
     pollTimer = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/jobs/${jobId}`);
+        const r = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
         const d = await r.json();
         updateJobUI(d);
         if (d.state === 'running') pollJob(jobId);
         else document.getElementById('compressBtn').disabled = false;
-      } catch { pollJob(jobId); }
+      } catch {
+        // Retry on transient network error
+        pollJob(jobId);
+      }
     }, 1500);
   }
 
@@ -382,10 +405,6 @@
   function formatDuration(s) {
     const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
     return [h>0?h+'h':'', m+'m', sec+'s'].filter(Boolean).join(' ');
-  }
-  function escapeHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-              .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 </script>
 </body>

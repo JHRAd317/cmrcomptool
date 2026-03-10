@@ -15,7 +15,16 @@ public class FfprobeService
 
     public async Task<ProbeResult> ProbeAsync(string filePath, CancellationToken ct = default)
     {
-        var args = $"-v error -print_format json -show_format -show_streams -- \"{filePath}\"";
+        var args = new[]
+        {
+            "-v", "error",
+            "-print_format", "json",
+            "-show_format",
+            "-show_streams",
+            "--",
+            filePath
+        };
+
         _logger.LogInformation("Running ffprobe on {Path}", filePath);
 
         string output;
@@ -23,10 +32,9 @@ public class FfprobeService
         {
             output = await RunProcessAsync("ffprobe", args, ct);
         }
-        catch (Exception ex) when (ex.Message.Contains("ffprobe"))
+        catch (InvalidOperationException)
         {
-            throw new InvalidOperationException(
-                "ffprobe not found in PATH. Please install ffmpeg (which includes ffprobe) and ensure it is accessible.", ex);
+            throw;
         }
 
         using var doc = JsonDocument.Parse(output);
@@ -73,18 +81,19 @@ public class FfprobeService
         return new ProbeResult(filePath, sizeBytes, duration, width, height, totalBitrate, videoBitrate, audioBitrate);
     }
 
-    private static async Task<string> RunProcessAsync(string exe, string args, CancellationToken ct)
+    private static async Task<string> RunProcessAsync(string exe, IEnumerable<string> arguments, CancellationToken ct)
     {
         using var process = new System.Diagnostics.Process();
         process.StartInfo = new System.Diagnostics.ProcessStartInfo
         {
             FileName = exe,
-            Arguments = args,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        foreach (var arg in arguments)
+            process.StartInfo.ArgumentList.Add(arg);
 
         var sb = new StringBuilder();
         var errorSb = new StringBuilder();

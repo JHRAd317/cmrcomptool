@@ -31,11 +31,12 @@ public class DownloadsService
             ? Path.GetFullPath(value)
             : Path.GetFullPath(Path.Combine(_downloadsPath, value));
 
-        // Normalise both paths for comparison (trailing separator on downloads).
-        var downloadsNorm = _downloadsPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                            + Path.DirectorySeparatorChar;
+        // Use Path.GetRelativePath to detect escape attempts on any OS (works on both
+        // case-sensitive and case-insensitive file systems without relying on StartsWith).
+        var relative = Path.GetRelativePath(_downloadsPath, candidate);
 
-        if (!candidate.StartsWith(downloadsNorm, StringComparison.OrdinalIgnoreCase))
+        // A safe relative path must not start with ".." or be an absolute path.
+        if (relative.StartsWith("..") || Path.IsPathRooted(relative))
             throw new UnauthorizedAccessException(
                 $"Access denied: path must be inside Downloads ({_downloadsPath}).");
 
