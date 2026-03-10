@@ -1,0 +1,865 @@
+﻿Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+#Compression Toolkit Test Release
+#Author: A202906
+#Last Updated: 02/05/2026
+#Version: 0.0.7
+
+
+#Last Changes:
+# 0.0.1 - 09/16/2025
+#    - Initial release to Clean Machines
+# 0.0.2 - 09/17/2025
+#    -Adjusted calulations to scale DR based on TBR instead of just DR. In theory should gain higher accuracy on large files (>1gb)
+# 0.0.3 - 09/30/2025
+#    - Finished auto-logging to C:\compressionTool\compressionLog.csv
+# 0.0.4 - 10/03/2025
+#    - Add Analyze Tab, and Tabs in general. Adjust GUI positioning to account for changes.
+# 0.0.5 - 10/20/2025
+#    - Adjust scaleCalc (lines 170/171) to use Ceiling() instead of Round() for MB conversion. Theory is will assist with large files that are outputting just over in excess of 80 minute lengths.
+#    - Adjust dataRateCalc in VLC function to use Floor() instead of float value. VLC Command line expects integer.
+# 0.0.6 - 12/08/2025
+#    - Add Transcode Tab with Button to convert video files to .mp4 format
+# 0.0.7 - 02/05/2026
+#    - Review and revise File Select Pathing in fileClick to remove need for folderClick.
+#    - Review and revise 0.0.5's math. Floor was unintentionally removed at some point and has been re-added.
+#
+
+
+# TODO: 
+#    
+#
+#
+
+$folderPath = ""
+$filePath = ""
+
+#Sounds
+#[System.Media.SystemSounds]::Asterisk.Play()
+
+#[System.Media.SystemSounds]::Beep.Play()
+#[System.Media.SystemSounds]::Exclamation.Play()
+#[System.Media.SystemSounds]::Hand.Play()
+#[System.Media.SystemSounds]::Question.Play() #silent
+
+#[System.Console]::Beep(800, 800)
+
+#[System.Console]::Beep(1200, 500)
+
+
+function logAttempt {
+    #Assemble and log compression attempt data
+    $cmName = ([System.Environment]::MachineName)
+    $repTPX = ([System.Environment]::UserName)
+    $attemptDateTime = $dataLabelAttemptDateTime.Text
+    $startTime = $dataLabelStartTime.Text
+    $endTime = $dataLabelEndTime.Text
+    $sourceSize = $dataLabelSourceSize.Text
+    $sourceLength = $dataLabelSourceLength.Text
+    $sourceWidth = $dataLabelSourceWidth.Text
+    $sourceHeight = $dataLabelSourceHeight.Text
+    $sourceDR = $dataLabelSourceDR.Text
+    $sourceABR = $dataLabelSourceABR.Text
+    $sourceTBR = $dataLabelSourceTBR.Text
+    $calcScale = $dataLabelCalcScale.Text
+    $calcDR = $dataLabelCalcDR.Text
+    $outSize = $dataLabelOutSize.Text
+    $outLength = $dataLabelOutLength.Text
+    $outWidth = $dataLabelOutWidth.Text
+    $outHeight = $dataLabelOutHeight.Text
+    $outDR = $dataLabelOutDR.Text
+    $outABR = $dataLabelOutABR.Text
+    $outTBR = $dataLabelOutTBR.Text
+
+
+    Add-Content -Path "C:\compressionTool\compressionLog.csv" -Value "$cmName,$repTPX,$attemptDateTime,$startTime,$endTime,$sourceSize,$sourceLength,$sourceWidth,$sourceHeight,$sourceDR,$sourceABR,$sourceTBR,$calcScale,$calcDR,$outSize,$outLength,$outWidth,$outHeight,$outDR,$outABR,$outTBR"
+    Write-Host "$cmName,$repTPX,$attemptDateTime,$startTime,$endTime,$sourceSize,$sourceLength,$sourceWidth,$sourceHeight,$sourceDR,$sourceABR,$sourceTBR,$calcScale,$calcDR,$outSize,$outLength,$outWidth,$outHeight,$outDR,$outABR,$outTBR"
+}
+
+function testClick {
+    #Test Function
+    #Write-Host "---------------------------------------------------------"
+    #Write-Host "Test Click Function"
+}
+
+function folderClick {
+    #Select Folder to default to in file selection
+    #Write-Host "---------------------------------------------------------"
+    #Write-Host "Folder Click Function"
+    [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms")|Out-Null
+
+    $foldername = New-Object System.Windows.Forms.FolderBrowserDialog
+    $foldername.Description = "Select Folder"
+    $foldername.rootfolder = "MyComputer"
+    $foldername.SelectedPath = $initialDirectory
+
+    if($foldername.ShowDialog() -eq "OK")
+    {
+        $folder += $foldername.SelectedPath
+    }else {
+        return
+    }
+
+    $folderBox.Text = $folder
+    $folderPath = $folder
+    Set-Location $folder
+    Write-Host "Working Folder: " $folder
+    return $folder
+}
+
+function fileClick([string]$initalDirectory) {
+    #Select File to compress
+    #Write-Host "---------------------------------------------------------"
+    #Write-Host "File Click Function"
+
+    #Write-Host $initalDirectory
+    #Write-Host $folderPath
+  
+    $null = Add-Type -AssemblyName System.windows.forms
+    
+    $OpenFileDialog = New-Object -TypeName System.Windows.Forms.OpenFileDialog
+    $OpenFileDialog.InitialDirectory = $folderBox.Text
+    $OpenFileDialog.filter = 'All files (*.*)| *.*'
+    if($OpenFileDialog.ShowDialog() -eq "OK")
+    {
+        $fileBox.Text = $OpenFileDialog.filename
+        Write-Host "Selected File:" $OpenFileDialog.filename
+    }else {
+        Write-Host "No file selected"
+        return
+    }
+
+    $file = Get-Item $OpenFileDialog.FileName
+
+    Write-Host "-----------------------"
+
+    Write-Host $file.Name
+    Write-Host $file.FullName
+    Write-Host $file.Directory
+    Write-Host $file.DirectoryName
+    $folderToSearch = $file.DirectoryName
+
+    $prog1Label.Visible = $true
+    $objShell = New-Object -ComObject Shell.Application
+    $objFolder = $objShell.Namespace($folderToSearch)
+
+    Write-Host $objFolder
+    
+    $filenameWithExtension = $file.Name
+    Write-Host $filenameWithExtension
+
+    $progressBar.Text = "Analyzing file..."
+    
+    
+
+    $objFile = $objFolder.ParseName($filenameWithExtension)
+    Write-Host $objFile
+    Write-Host "-----------------------"
+    $fileMeta = [ordered]@{}
+    for($id = 0; $id -le 500; $id++){
+        $fileMeta[ $($objFolder.GetDetailsOf($objFolder, $id)) ] = $(
+            if($objFolder.GetDetailsOf($objFile, $id)){
+                $($objFolder.GetDetailsOf($objFile, $id))
+                $progressBar.Value = $id
+            }else{ "" }
+        )
+    }
+    
+    # print ordered hashtable
+    #$fileMeta
+    #$fileMeta.Count
+    
+    $nameText = $OpenFileDialog.FileName
+    $drText = "Data Rate (Kbps): $($fileMeta['Data rate'])"
+    $fileSizeText = "File Size (MB): $([math]::Round($file.Length / 1MB,2))"
+    $fileSizeRaw = $file.Length
+    $dataLabelSourceSize.Text = $fileSizeRaw
+
+    $fileNameLabel.Text = $nameText
+    $fileDRLabel.Text = $drText
+    $fileSizeLabel.Text = $fileSizeText
+
+    $dr = $fileMeta['Data rate']
+    $tbr = $fileMeta['Total bitrate']
+    $drIndex = $dr.IndexOf('k')
+
+    $drSubString = ($dr.Substring(0,$drIndex))
+    $tbrSubString = ($tbr.Substring(0,$drIndex))
+    $dataRateIn = [int]::Parse($drSubString.Replace([char] 0x200e,' ').Trim())
+    $tbrIn = [int]::Parse($tbrSubString.Replace([char] 0x200e,' ').Trim())
+    #$scaleCalc = 400 / $([math]::Round($file.Length / 1MB,2))
+    $scaleCalc = 400 / $([math]::Ceiling($file.Length / 1MB))
+    #Write-Host $dr
+    #Write-Host $drIndex
+    #Write-Host $dataRateIn
+    #Write-Host $drSubString
+    $dataRateCalc = $([math]::Floor(($tbrIn * $scaleCalc)))
+    $dataRateCalcString = [string]$dataRateCalc
+    $dataRateCalcString = $dataRateCalcString.Replace('.','_')
+    $drOutNumLabel.Text = $dataRateCalc
+
+    $dataLabelSourceDR.Text = $dataRateIn
+    $dataLabelSourceTBR.Text = $tbrIn
+    $dataLabelCalcScale.Text = $scaleCalc
+    $dataLabelCalcDR.Text = $dataRateCalc
+    $dataLabelSourceWidth.Text = $fileMeta['Frame width']
+    $dataLabelSourceHeight.Text = $fileMeta['Frame height']
+
+    $fileABR = $fileMeta['Bit rate']
+    $abrSubString = ($fileABR.Substring(0,$fileABR.IndexOf('k')))
+    $abrIn = $abrSubString.Replace([char] 0x200e,' ').Trim()
+    $dataLabelSourceABR.Text = $abrIn
+    
+    $fileLength = $fileMeta['Length']
+    $fileLengthArray = $fileLength.Split(":")
+    $fileLengthSeconds = ( ([int]::Parse($fileLengthArray[0])*60*60) + ([int]::Parse($fileLengthArray[1])*60) + [int]::Parse($fileLengthArray[2]) ) 
+    $dataLabelSourceLength.Text = $fileLengthSeconds
+
+    $fileSaveName = $nameText -replace "[.,;/?()`~'""]","_"
+    #$fileSaveName = $fileSaveName.Replace(' ','_')
+    #$fileSaveName = $fileSaveName.Replace('.','_')
+    #Write-Host $fileSaveName
+    
+    $fileSaveName = "$fileSaveName-DR-$dataRateCalcString.mp4"
+    $saveBox.Text = "$fileSaveName"
+    $calcLabel.Text = "Calculation rate: $scaleCalc"
+    $drOutLabel.Text = "Output Data Rate: $dataRateCalc"
+
+    $prog2Label.Visible = $false
+    $prog3Label.Visible = $false
+
+    $progressBar.Text = "File Ready To Compress"
+
+    return $OpenFileDialog.FileName
+
+
+
+}
+
+Function fileSave($initialDirectory,$fileName) {
+    #File Dialog to choose save file name / location
+    $saveFileDialog = [System.Windows.Forms.SaveFileDialog]@{
+        CheckPathExists  = $true
+        CreatePrompt     = $false
+        OverwritePrompt  = $true
+        InitialDirectory = $initialDirectory
+        FileName         = $fileName
+        Title            = 'Set Output Destination'
+        Filter           = "All files (*.*)|*.*"
+    }
+
+    # Show save file dialog box
+    if($saveFileDialog.ShowDialog() -eq 'Ok') {
+        $continue = $true
+        $saveFileDialog.FileName
+        $saveBox.Text = $saveFileDialog.FileName
+    } else {
+        
+    }
+    #Write-Host "ID: $initialDirectory | FN: $fileName"
+}
+
+Function sendToVLC {
+    #Send compression file to VLC
+    $vlcButton.Enabled = $false
+    $outProgressBar.Value = 0
+
+    $prog2Label.Visible = $true
+    $vlcPath = "C:\Program Files\VideoLAN\VLC\vlc.exe"
+
+    $fileToCompressName = $fileNameLabel.Text
+    $destinationPath = $saveBox.Text
+    
+    
+    $dataRateCalc = $([math]::Floor($drOutNumLabel.Text))
+
+    $vlcButton.Visible = $false
+
+    $dataLabelAttemptDateTime.Text = Get-Date -Format "yyyy-MM-dd_HH:mm:ss"
+    $dataLabelStartTime.Text = Get-Date -Format "HH:mm"
+    #$dataLabelCalcDR.Text = $dataRateCalcs
+
+    Write-Host "$fileToCompressName | Start Time:  $(Get-Date -Format "HH:mm K")| Output: $destinationPath"
+    Start-Process $vlcPath -ArgumentList """$fileToCompressName""", "--sout=""#transcode{vcodec=h264,vb=$dataRateCalc}:standard{access=file,mux=mp4,dst=$destinationPath }"", vlc://quit " -wait
+    $outFile = Get-Item $destinationPath
+    Write-Host "  End Time: $(Get-Date -Format "HH:mm K") Output Size: (MB): $([math]::Round($outFile.Length / 1MB,2))"
+    $dataLabelEndTime.Text = Get-Date -Format "HH:mm"
+
+
+    #AnalyzeOutputFile
+    $outObjShell = New-Object -ComObject Shell.Application
+    $outObjFolder = $outObjShell.Namespace($outFile.DirectoryName)
+    $outObjFile = $outObjFolder.ParseName($outFile.Name)
+    $outFileMeta = [ordered]@{}
+    for($id = 0; $id -le 500; $id++){
+        $outFileMeta[ $($outObjFolder.GetDetailsOf($outObjFolder, $id)) ] = $(
+            if($outObjFolder.GetDetailsOf($outObjFile, $id)){
+                $($outObjFolder.GetDetailsOf($outObjFile, $id))
+                $outProgressBar.Value = $id
+            }else{ "" }
+        )
+    }
+
+    $dataLabelOutSize.Text = $outFile.Length
+
+    
+
+    $outFileABR = $outFileMeta['Bit rate']
+    $abrSubString = ($outFileABR.Substring(0,$outFileABR.IndexOf('k')))
+    $abrOut = $abrSubString.Replace([char] 0x200e,' ').Trim()
+    $dataLabelOutABR.Text = $abrOut
+
+    
+    $fileLength = $outFileMeta['Length']
+    $fileLengthArray = $fileLength.Split(":")
+    $fileLengthSeconds = ( ([int]::Parse($fileLengthArray[0])*60*60) + ([int]::Parse($fileLengthArray[1])*60) + [int]::Parse($fileLengthArray[2]))
+    $dataLabelOutLength.Text = $fileLengthSeconds
+
+    $dataLabelOutWidth.Text = $outFileMeta['Frame width']
+    $dataLabelOutHeight.Text = $outFileMeta['Frame height']
+
+    $dr = $outFileMeta['Data rate']
+    $tbr = $outFileMeta['Total bitrate']
+    $drIndex = $dr.IndexOf('k')
+
+    $drSubString = ($dr.Substring(0,$drIndex))
+    $tbrSubString = ($tbr.Substring(0,$drIndex))
+    $dataRateOut = [int]::Parse($drSubString.Replace([char] 0x200e,' ').Trim())
+    $tbrOut = [int]::Parse($tbrSubString.Replace([char] 0x200e,' ').Trim())
+
+    $dataLabelOutDR.Text = $dataRateOut
+    $dataLabelOutTBR.Text = $tbrOut
+
+    logAttempt
+
+    $vlcButton.Visible = $true
+
+    $outForm = New-Object System.Windows.Forms.Form
+    $outForm.Text = 'Compression Complete'
+    $outForm.Size = New-Object System.Drawing.Size(300,50)
+    $outForm.StartPosition = 'CenterScreen'
+    $outForm.Topmost = $true
+    $outCloseButton = New-Object System.Windows.Forms.Button
+    $outCloseButton.Location = New-Object System.Drawing.Point(100,25)
+    $outCloseButton.Size = New-Object System.Drawing.Size(100,23)
+    $outCloseButton.Text = 'Close'
+    $outCloseButton.DialogResult = [System.Windows.Forms.DialogResult]::Yes
+    $outForm.AcceptButton = $outCloseButton
+    $outForm.Controls.Add($outCloseButton)
+
+    $prog3Label.Visible = $true
+    $vlcButton.Enabled = $true
+}
+
+
+
+Function analyzeDrive() {
+    #Analyze Drive for files
+    $folder = folderClick
+    $analyzeCountLabel.Text = "Analyzing..."
+    Get-ChildItem -Path $folder -Recurse -File -ErrorAction SilentlyContinue | Where-Object {$_.Length -gt (500 * 1MB) -and  $_.Extension -in @(".mp4", ".wmv", ".avi")} | Sort-Object -Property Length -Descending | Select-Object -OutVariable returnData -Property Name, @{Name='Size (MB)';Expression={[Math]::Round($_.Length/1MB,3)}}, FullName
+
+    $returnData.Count
+
+     
+    #Write-Host $tabPageAnalyze.BackColor
+    #Write-Host $analyzeFolderButton.BackColor
+
+    if($returnData.Count -gt 0)
+    {
+        $tabPageAnalyze.BackColor = [System.Drawing.Color]::Red
+        $analyzeCountLabel.Text = "$($returnData.Count) Files Require Compression"
+
+    }else {
+        $tabPageAnalyze.BackColor = [System.Drawing.Color]::Green
+        $analyzeCountLabel.Text = "No Files Require Compression"
+    }
+
+
+}
+
+
+Function analyzeReset() {
+    #Reset Analyze Tab
+
+    $tabPageAnalyze.BackColor = [System.Drawing.Color]::Empty
+    $analyzeCountLabel.Text = ""
+}
+
+
+Function transcodeFile() {
+
+    $vlcPath = "C:\Program Files\VideoLAN\VLC\vlc.exe"
+
+    $null = Add-Type -AssemblyName System.windows.forms
+    
+    $OpenFileDialog = New-Object -TypeName System.Windows.Forms.OpenFileDialog
+    $OpenFileDialog.InitialDirectory = $folderBox.Text
+    $OpenFileDialog.filter = 'All files (*.*)| *.*'
+    if($OpenFileDialog.ShowDialog() -eq "OK")
+    {
+        $fileBox.Text = $OpenFileDialog.filename
+        Write-Host "Selected File:" $OpenFileDialog.filename
+    }else {
+        Write-Host "No file selected"
+        return
+    }
+    $file = Get-Item $OpenFileDialog.FileName
+
+    $fileToTranscodeName = $OpenFileDialog.FileName
+    Write-Host $fileToTranscodeName
+    $nameText = $fileToTranscodeName
+
+    $fileSaveName = $nameText -replace "[.,;/?()`~'""]","_"
+    
+    $destinationPath = ($fileSaveName + "_CONVERTED-TO-MP4.mp4")
+    Write-Host $destinationPath
+
+
+    Start-Process $vlcPath -ArgumentList """$fileToTranscodeName""", "--sout=""#transcode{vcodec=h264,acodec=mpga}:standard{access=file,mux=mp4,dst=$destinationPath }"", vlc://quit " -wait
+
+
+}
+
+
+
+
+
+$downloadsFolder = (New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path
+$folderPath = $downloadsFolder
+
+$formSizeX = 650
+$formSizeY = 450
+
+$labelSizeX = 400
+$labelSizeY = 25
+
+
+#Form Creation
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Compression Toolkit'
+$form.Size = New-Object System.Drawing.Size($formSizeX,$formSizeY)
+$form.StartPosition = 'CenterScreen'
+$form.Topmost = $true
+
+#$okButton = New-Object System.Windows.Forms.Button
+#$okButton.Location = New-Object System.Drawing.Point(75,120)
+#$okButton.Size = New-Object System.Drawing.Size(75,23)
+#$okButton.Text = 'OK'
+#$okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+#$form.AcceptButton = $okButton
+#$tabPageCompression.Controls.Add($okButton)
+
+
+#Create Tab Group Object
+$tabControl = New-Object System.Windows.Forms.TabControl
+#$tabControl.Dock = [System.Windows.Forms.DockStyle]::Top
+$tabControl.Location = New-Object System.Drawing.Point(2,2)
+$tabControl.Size = New-Object System.Drawing.Size(($formSizeX-4),($formSizeY-90))
+$form.Controls.Add($tabControl)
+
+
+#Tab 1 - Compression Tool
+$tabPageCompression = New-Object System.Windows.Forms.TabPage
+$tabPageCompression.Font = New-Object System.Drawing.Font("96 Sans", 8, [System.Drawing.FontStyle]::Regular)
+$tabPageCompression.Text = "Compression"
+$tabControl.TabPages.Add($tabPageCompression)
+
+$fileNameLabel = New-Object System.Windows.Forms.Label
+$fileNameLabel.Location = New-Object System.Drawing.Point(10,110)
+$fileNameLabel.Size = New-Object System.Drawing.Size(($formSizeX - 10),$labelSizeY)
+$fileNameLabel.Font = New-Object System.Drawing.Font("96 Sans", 8, [System.Drawing.FontStyle]::Regular)
+$fileNameLabel.Text = "FileName"
+$tabPageCompression.Controls.Add($fileNameLabel)
+$fileNameLabel.Visible = $false
+
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Size = New-Object System.Drawing.Size(($formSizeX - 90),$labelSizeY)
+$progressBar.Location = New-Object System.Drawing.Point(10, 110)
+$progressBar.Maximum = 326 # Set the maximum value for the progress bar
+$tabPageCompression.Controls.Add($progressBar)
+
+$fileDRLabel = New-Object System.Windows.Forms.Label
+$fileDRLabel.Location = New-Object System.Drawing.Point(10,135)
+$fileDRLabel.Size = New-Object System.Drawing.Size($labelSizeX,$labelSizeY)
+$fileDRLabel.Font = New-Object System.Drawing.Font("96 Sans", 8, [System.Drawing.FontStyle]::Regular)
+$fileDRLabel.Text = "Data Rate"
+$tabPageCompression.Controls.Add($fileDRLabel)
+
+$fileSizeLabel = New-Object System.Windows.Forms.Label
+$fileSizeLabel.Location = New-Object System.Drawing.Point(10,160)
+$fileSizeLabel.Size = New-Object System.Drawing.Size($labelSizeX,$labelSizeY)
+$fileSizeLabel.Font = New-Object System.Drawing.Font("96 Sans", 8, [System.Drawing.FontStyle]::Regular)
+$fileSizeLabel.Text = "File Size (MB)"
+$tabPageCompression.Controls.Add($fileSizeLabel)
+
+#$testButton = New-Object System.Windows.Forms.Button
+#$testButton.Location = New-Object System.Drawing.Point(150,120)
+#$testButton.Size = New-Object System.Drawing.Size(75,23)
+#$testButton.Text = 'Test'
+#$testButton.DialogResult = [System.Windows.Forms.DialogResult]::None
+#$testButton.Add_Click({testClick})
+#$form.AcceptButton = $testButton
+#$tabPageCompression.Controls.Add($testButton)
+
+$cancelButton = New-Object System.Windows.Forms.Button
+$cancelButton.Location = New-Object System.Drawing.Point(($formSizeX - 120),($formSizeY - 85))
+$cancelButton.Size = New-Object System.Drawing.Size(75,23)
+$cancelButton.Text = 'Close'
+$cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$form.CancelButton = $cancelButton
+$form.Controls.Add($cancelButton)
+
+$label = New-Object System.Windows.Forms.Label
+$label.Location = New-Object System.Drawing.Point(10,20)
+$label.Size = New-Object System.Drawing.Size(($formSizeX - 20),20)
+$label.Text = 'Please select the folder and file to compress below:'
+$tabPageCompression.Controls.Add($label)
+
+$folderBox = New-Object System.Windows.Forms.TextBox
+$folderBox.Location = New-Object System.Drawing.Point(10,40)
+$folderBox.Size = New-Object System.Drawing.Size(460,50)
+$folderBox.Text = $downloadsFolder
+$folderBox.Font = New-Object System.Drawing.Font("96 Sans", 12, [System.Drawing.FontStyle]::Regular)
+$tabPageCompression.Controls.Add($folderBox)
+
+$folderButton = New-Object System.Windows.Forms.Button
+$folderButton.Location = New-Object System.Drawing.Point(480,40)
+$folderButton.Size = New-Object System.Drawing.Size(90,23)
+$folderButton.Text = 'Folder'
+$folderButton.DialogResult = [System.Windows.Forms.DialogResult]::None
+$folderButton.Add_Click({$folderPath = folderClick})
+$form.AcceptButton = $folderButton
+$tabPageCompression.Controls.Add($folderButton)
+
+$fileBox = New-Object System.Windows.Forms.TextBox
+$fileBox.Location = New-Object System.Drawing.Point(10,80)
+$fileBox.Size = New-Object System.Drawing.Size(460,50)
+$fileBox.Text = "Example File Text"
+$fileBox.Font = New-Object System.Drawing.Font("96 Sans", 12, [System.Drawing.FontStyle]::Regular)
+$tabPageCompression.Controls.Add($fileBox)
+
+$fileButton = New-Object System.Windows.Forms.Button
+$fileButton.Location = New-Object System.Drawing.Point(480,80)
+$fileButton.Size = New-Object System.Drawing.Size(90,23)
+$fileButton.Text = 'File'
+$fileButton.DialogResult = [System.Windows.Forms.DialogResult]::None
+$fileButton.Add_Click({$filePath = fileClick -initialDirectory $folderPath})
+$form.AcceptButton = $fileButton
+$tabPageCompression.Controls.Add($fileButton)
+
+$saveBox = New-Object System.Windows.Forms.TextBox
+$saveBox.Location = New-Object System.Drawing.Point(10,185)
+$saveBox.Size = New-Object System.Drawing.Size(460,50)
+$saveBox.Text = "Example Save File Text"
+$saveBox.Font = New-Object System.Drawing.Font("96 Sans", 12, [System.Drawing.FontStyle]::Regular)
+$tabPageCompression.Controls.Add($saveBox)
+
+$saveButton = New-Object System.Windows.Forms.Button
+$saveButton.Location = New-Object System.Drawing.Point(480,185)
+$saveButton.Size = New-Object System.Drawing.Size(90,23)
+$saveButton.Text = 'Save'
+$saveButton.DialogResult = [System.Windows.Forms.DialogResult]::None
+$saveButton.Add_Click({fileSave $downloadsFolder $fileSaveName})
+$form.AcceptButton = $saveButton
+$tabPageCompression.Controls.Add($saveButton)
+
+
+$calcLabel = New-Object System.Windows.Forms.Label
+$calcLabel.Location = New-Object System.Drawing.Point(10,215)
+$calcLabel.Size = New-Object System.Drawing.Size(($formSizeX - 20),20)
+$calcLabel.Text = 'Calculated Rate:'
+$tabPageCompression.Controls.Add($calcLabel)
+
+$drOutLabel = New-Object System.Windows.Forms.Label
+$drOutLabel.Location = New-Object System.Drawing.Point(10,240)
+$drOutLabel.Size = New-Object System.Drawing.Size(($formSizeX - 20),20)
+$drOutLabel.Text = 'Output Data Rate:'
+$tabPageCompression.Controls.Add($drOutLabel)
+
+#Invisible Label for reference
+$drOutNumLabel = New-Object System.Windows.Forms.Label
+$drOutNumLabel.Location = New-Object System.Drawing.Point(10,250)
+$drOutNumLabel.Size = New-Object System.Drawing.Size(($formSizeX - 20),20)
+$drOutNumLabel.Text = ''
+$tabPageCompression.Controls.Add($drOutNumLabel)
+$drOutNumLabel.Visible = $false
+
+$outProgressBar = New-Object System.Windows.Forms.ProgressBar
+$outProgressBar.Size = New-Object System.Drawing.Size(($formSizeX - 90),10)
+$outProgressBar.Location = New-Object System.Drawing.Point(10, 265)
+$outProgressBar.Maximum = 326 # Set the maximum value for the progress bar
+$tabPageCompression.Controls.Add($outProgressBar)
+
+$vlcButton = New-Object System.Windows.Forms.Button
+$vlcButton.Location = New-Object System.Drawing.Point(150,300)
+$vlcButton.Size = New-Object System.Drawing.Size(120,23)
+$vlcButton.Text = 'Send to VLC'
+$vlcButton.DialogResult = [System.Windows.Forms.DialogResult]::None
+$vlcButton.Add_Click({sendToVLC})
+$form.AcceptButton = $vlcButton
+$tabPageCompression.Controls.Add($vlcButton)
+
+$prog1Label = New-Object System.Windows.Forms.Label
+$prog1Label.Location = New-Object System.Drawing.Point(($formSizeX - 300),280)
+$prog1Label.Size = New-Object System.Drawing.Size((200),20)
+$prog1Label.Text = 'File selected...'
+$tabPageCompression.Controls.Add($prog1Label)
+
+$prog2Label = New-Object System.Windows.Forms.Label
+$prog2Label.Location = New-Object System.Drawing.Point(($formSizeX - 300),300)
+$prog2Label.Size = New-Object System.Drawing.Size((200),20)
+$prog2Label.Text = 'Sending file to VLC...'
+$tabPageCompression.Controls.Add($prog2Label)
+
+$prog3Label = New-Object System.Windows.Forms.Label
+$prog3Label.Location = New-Object System.Drawing.Point(($formSizeX - 300),320)
+$prog3Label.Size = New-Object System.Drawing.Size((200),20)
+$prog3Label.Text = 'Completed'
+$tabPageCompression.Controls.Add($prog3Label)
+
+$prog1Label.Visible = $false
+$prog2Label.Visible = $false
+$prog3Label.Visible = $false
+
+
+#Start Invis Data Labels
+$dataLabelAttemptDateTime = New-Object System.Windows.Forms.Label
+$dataLabelAttemptDateTime.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelAttemptDateTime.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelAttemptDateTime.Visible = $false
+$dataLabelAttemptDateTime.Text = ""
+$tabPageCompression.Controls.Add($dataLabelAttemptDateTime)
+
+$dataLabelFileName = New-Object System.Windows.Forms.Label
+$dataLabelFileName.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelFileName.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelFileName.Visible = $false
+$dataLabelFileName.Text = ""
+$tabPageCompression.Controls.Add($dataLabelFileName)
+
+$dataLabelStartTime = New-Object System.Windows.Forms.Label
+$dataLabelStartTime.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelStartTime.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelStartTime.Visible = $false
+$dataLabelStartTime.Text = ""
+$tabPageCompression.Controls.Add($dataLabelStartTime)
+
+$dataLabelEndTime = New-Object System.Windows.Forms.Label
+$dataLabelEndTime.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelEndTime.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelEndTime.Visible = $false
+$dataLabelEndTime.Text = ""
+$tabPageCompression.Controls.Add($dataLabelEndTime)
+
+$dataLabelSourceSize = New-Object System.Windows.Forms.Label
+$dataLabelSourceSize.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelSourceSize.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelSourceSize.Visible = $false
+$dataLabelSourceSize.Text = ""
+$tabPageCompression.Controls.Add($dataLabelSourceSize)
+
+$dataLabelSourceLength = New-Object System.Windows.Forms.Label
+$dataLabelSourceLength.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelSourceLength.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelSourceLength.Visible = $false
+$dataLabelSourceLength.Text = ""
+$tabPageCompression.Controls.Add($dataLabelSourceLength)
+
+$dataLabelSourceWidth = New-Object System.Windows.Forms.Label
+$dataLabelSourceWidth.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelSourceWidth.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelSourceWidth.Visible = $false
+$dataLabelSourceWidth.Text = ""
+$tabPageCompression.Controls.Add($dataLabelSourceWidth)
+
+$dataLabelSourceHeight = New-Object System.Windows.Forms.Label
+$dataLabelSourceHeight.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelSourceHeight.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelSourceHeight.Visible = $false
+$dataLabelSourceHeight.Text = ""
+$tabPageCompression.Controls.Add($dataLabelSourceHeight)
+
+$dataLabelSourceDR = New-Object System.Windows.Forms.Label
+$dataLabelSourceDR.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelSourceDR.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelSourceDR.Visible = $false
+$dataLabelSourceDR.Text = ""
+$tabPageCompression.Controls.Add($dataLabelSourceDR)
+
+$dataLabelSourceTBR = New-Object System.Windows.Forms.Label
+$dataLabelSourceTBR.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelSourceTBR.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelSourceTBR.Visible = $false
+$dataLabelSourceTBR.Text = ""
+$tabPageCompression.Controls.Add($dataLabelSourceTBR)
+
+$dataLabelSourceABR = New-Object System.Windows.Forms.Label
+$dataLabelSourceABR.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelSourceABR.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelSourceABR.Visible = $false
+$dataLabelSourceABR.Text = ""
+$tabPageCompression.Controls.Add($dataLabelSourceABR)
+
+$dataLabelCalcScale = New-Object System.Windows.Forms.Label
+$dataLabelCalcScale.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelCalcScale.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelCalcScale.Visible = $false
+$dataLabelCalcScale.Text = ""
+$tabPageCompression.Controls.Add($dataLabelCalcScale)
+
+$dataLabelCalcDR = New-Object System.Windows.Forms.Label
+$dataLabelCalcDR.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelCalcDR.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelCalcDR.Visible = $false
+$dataLabelCalcDR.Text = ""
+$tabPageCompression.Controls.Add($dataLabelCalcDR)
+
+$dataLabelOutSize = New-Object System.Windows.Forms.Label
+$dataLabelOutSize.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelOutSize.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelOutSize.Visible = $false
+$dataLabelOutSize.Text = ""
+$tabPageCompression.Controls.Add($dataLabelOutSize)
+
+$dataLabelOutLength = New-Object System.Windows.Forms.Label
+$dataLabelOutLength.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelOutLength.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelOutLength.Visible = $false
+$dataLabelOutLength.Text = ""
+$tabPageCompression.Controls.Add($dataLabelOutLength)
+
+$dataLabelOutWidth = New-Object System.Windows.Forms.Label
+$dataLabelOutWidth.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelOutWidth.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelOutWidth.Visible = $false
+$dataLabelOutWidth.Text = ""
+$tabPageCompression.Controls.Add($dataLabelOutWidth)
+
+$dataLabelOutHeight = New-Object System.Windows.Forms.Label
+$dataLabelOutHeight.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelOutHeight.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelOutHeight.Visible = $false
+$dataLabelOutHeight.Text = ""
+$tabPageCompression.Controls.Add($dataLabelOutHeight)
+
+$dataLabelOutDR = New-Object System.Windows.Forms.Label
+$dataLabelOutDR.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelOutDR.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelOutDR.Visible = $false
+$dataLabelOutDR.Text = ""
+$tabPageCompression.Controls.Add($dataLabelOutDR)
+
+$dataLabelOutTBR = New-Object System.Windows.Forms.Label
+$dataLabelOutTBR.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelOutTBR.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelOutTBR.Visible = $false
+$dataLabelOutTBR.Text = ""
+$tabPageCompression.Controls.Add($dataLabelOutTBR)
+
+$dataLabelOutABR = New-Object System.Windows.Forms.Label
+$dataLabelOutABR.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelOutABR.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelOutABR.Visible = $false
+$dataLabelOutABR.Text = ""
+$tabPageCompression.Controls.Add($dataLabelOutABR)
+
+$dataLabelDuration = New-Object System.Windows.Forms.Label
+$dataLabelDuration.Location = New-Object System.Drawing.Point(0,0)
+$dataLabelDuration.Size = New-Object System.Drawing.Size(0,0)
+$dataLabelDuration.Visible = $false
+$dataLabelDuration.Text = ""
+$tabPageCompression.Controls.Add($dataLabelDuration)
+
+#$testButton = New-Object System.Windows.Forms.Button
+#$testButton.Location = New-Object System.Drawing.Point(150,120)
+#$testButton.Size = New-Object System.Drawing.Size(75,23)
+#$testButton.Text = 'Test'
+#$testButton.DialogResult = [System.Windows.Forms.DialogResult]::None
+#$testButton.Add_Click({testClick})
+#$form.AcceptButton = $testButton
+#$tabPageCompression.Controls.Add($testButton)
+
+
+
+
+
+
+#Tab 2 - Analyze Tool
+$tabPageAnalyze = New-Object System.Windows.Forms.TabPage
+$tabPageAnalyze.Font = New-Object System.Drawing.Font("96 Sans", 8, [System.Drawing.FontStyle]::Regular)
+$tabPageAnalyze.Text = "Analyze"
+$tabControl.TabPages.Add($tabPageAnalyze)
+
+$analyzeFolderButton = New-Object System.Windows.Forms.Button
+$analyzeFolderButton.Location = New-Object System.Drawing.Point(200,40)
+$analyzeFolderButton.Size = New-Object System.Drawing.Size(90,23)
+$analyzeFolderButton.BackColor = [System.Drawing.Color]::White
+$analyzeFolderButton.Text = 'Analyze'
+$analyzeFolderButton.DialogResult = [System.Windows.Forms.DialogResult]::None
+$analyzeFolderButton.Add_Click({analyzeDrive})
+#$form.AcceptButton = $analyzeFolderButton
+$tabPageAnalyze.Controls.Add($analyzeFolderButton)
+
+$analyzeResetButton = New-Object System.Windows.Forms.Button
+$analyzeResetButton.Location = New-Object System.Drawing.Point(200,80)
+$analyzeResetButton.Size = New-Object System.Drawing.Size(90,23)
+$analyzeResetButton.BackColor = [System.Drawing.Color]::White
+$analyzeResetButton.Text = 'Reset'
+$analyzeResetButton.DialogResult = [System.Windows.Forms.DialogResult]::None
+$analyzeResetButton.Add_Click({analyzeReset})
+#$form.AcceptButton = $analyzeFolderButton
+$tabPageAnalyze.Controls.Add($analyzeResetButton)
+
+$analyzeCountLabel = New-Object System.Windows.Forms.Label
+$analyzeCountLabel.Location = New-Object System.Drawing.Point(100,110)
+$analyzeCountLabel.Size = New-Object System.Drawing.Size(300,20)
+$analyzeCountLabel.Text = ''
+$tabPageAnalyze.Controls.Add($analyzeCountLabel)
+
+
+
+#Tab 3 - Transcode Tool
+$tabPageTranscode = New-Object System.Windows.Forms.TabPage
+$tabPageTranscode.Font = New-Object System.Drawing.Font("96 Sans", 8, [System.Drawing.FontStyle]::Regular)
+$tabPageTranscode.Text = "Transcode"
+$tabControl.TabPages.Add($tabPageTranscode)
+
+$transcodeFileButton = New-Object System.Windows.Forms.Button
+$transcodeFileButton.Location = New-Object System.Drawing.Point(190,40)
+$transcodeFileButton.Size = New-Object System.Drawing.Size(110,40)
+$transcodeFileButton.BackColor = [System.Drawing.Color]::White
+$transcodeFileButton.Text = 'Convert File'
+$transcodeFileButton.DialogResult = [System.Windows.Forms.DialogResult]::None
+$transcodeFileButton.Add_Click({transcodeFile})
+#$form.AcceptButton = $analyzeFolderButton
+$tabPageTranscode.Controls.Add($transcodeFileButton)
+
+$transcodeLabel = New-Object System.Windows.Forms.Label
+$transcodeLabel.Location = New-Object System.Drawing.Point(80,110)
+$transcodeLabel.Size = New-Object System.Drawing.Size(350,20)
+$transcodeLabel.Text = 'Used to convert non .mp4 video files to .mp4 format'
+$tabPageTranscode.Controls.Add($transcodeLabel)
+
+
+
+#Show Form
+
+$form.Add_Shown({$folderBox.Select()})
+$result = $form.ShowDialog()
+
+switch ($result) {
+
+    ([System.Windows.Forms.DialogResult]::OK) {
+        #Write-Host "Ok Clicked"
+    }
+    ([System.Windows.Forms.DialogResult]::Cancel) {
+        #Write-Host "Close Clicked"
+    }
+    ([System.Windows.Forms.DialogResult]::None) {
+        #Write-Host "None Clicked"
+    }
+
+}
