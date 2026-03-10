@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CMR Compression Toolkit</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #1e1e2e; color: #cdd6f4; min-height: 100vh; }
+    header { background: #313244; padding: 18px 28px; display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #89b4fa; }
+    header h1 { font-size: 1.4rem; color: #89b4fa; }
+    header small { color: #a6adc8; font-size: 0.85rem; }
+    .container { max-width: 920px; margin: 32px auto; padding: 0 20px; }
+    .card { background: #313244; border-radius: 10px; padding: 24px; margin-bottom: 24px; border: 1px solid #45475a; }
+    .card h2 { font-size: 1.1rem; color: #cba6f7; margin-bottom: 16px; border-bottom: 1px solid #45475a; padding-bottom: 8px; }
+    label { display: block; font-size: 0.85rem; color: #a6adc8; margin-bottom: 4px; }
+    select, input[type=text], input[type=number] {
+      width: 100%; padding: 9px 12px; border-radius: 6px; border: 1px solid #585b70;
+      background: #1e1e2e; color: #cdd6f4; font-size: 0.95rem; outline: none; margin-bottom: 12px;
+    }
+    select:focus, input:focus { border-color: #89b4fa; }
+    button {
+      padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer;
+      font-size: 0.9rem; font-weight: 600; transition: opacity .15s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: #89b4fa; color: #1e1e2e; }
+    .btn-success { background: #a6e3a1; color: #1e1e2e; }
+    .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+    .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .row > * { flex: 1; min-width: 160px; }
+    .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; }
+    .meta-box { background: #1e1e2e; border-radius: 6px; padding: 10px 12px; }
+    .meta-box .label { font-size: 0.75rem; color: #a6adc8; }
+    .meta-box .value { font-size: 1.05rem; color: #cdd6f4; font-weight: 600; margin-top: 2px; }
+    .log-box {
+      background: #1e1e2e; border-radius: 6px; padding: 12px; font-family: 'Cascadia Code', monospace;
+      font-size: 0.78rem; color: #a6e3a1; white-space: pre-wrap; max-height: 220px; overflow-y: auto;
+      margin-top: 14px; border: 1px solid #45475a;
+    }
+    .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.78rem; font-weight: 700; }
+    .status-running { background: #fab387; color: #1e1e2e; }
+    .status-completed { background: #a6e3a1; color: #1e1e2e; }
+    .status-failed { background: #f38ba8; color: #1e1e2e; }
+    .progress-bar-outer { background: #1e1e2e; border-radius: 8px; height: 14px; overflow: hidden; margin-top: 8px; }
+    .progress-bar-inner { height: 100%; background: #89b4fa; border-radius: 8px; transition: width .3s; }
+    .alert { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 0.88rem; }
+    .alert-error { background: #45475a; color: #f38ba8; border-left: 4px solid #f38ba8; }
+    .alert-info { background: #45475a; color: #89dceb; border-left: 4px solid #89dceb; }
+    .hidden { display: none; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th { text-align: left; padding: 8px 10px; border-bottom: 1px solid #585b70; color: #a6adc8; font-weight: 600; }
+    td { padding: 7px 10px; border-bottom: 1px solid #313244; }
+    tr:hover td { background: #1e1e2e; }
+    .clickable { cursor: pointer; color: #89b4fa; }
+    .clickable:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🎬 CMR Compression Toolkit</h1>
+    <small id="downloadsPath">Loading downloads path…</small>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- File List -->
+  <div class="card">
+    <h2>1 · Select Source File (Downloads)</h2>
+    <div class="row">
+      <div>
+        <label>Video extensions (comma-separated)</label>
+        <input type="text" id="extFilter" value=".mp4,.wmv,.avi,.mov,.mkv" />
+      </div>
+      <div>
+        <label>Min size (MB)</label>
+        <input type="number" id="minMB" value="0" min="0" style="max-width:110px" />
+      </div>
+      <div style="flex:0">
+        <button class="btn-primary" onclick="loadFiles()">↺ Refresh</button>
+      </div>
+    </div>
+    <div id="fileListError" class="alert alert-error hidden"></div>
+    <table id="fileTable">
+      <thead><tr><th>Name</th><th>Size (MB)</th><th></th></tr></thead>
+      <tbody id="fileTableBody"><tr><td colspan="3" style="color:#585b70">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Probe + Calc -->
+  <div class="card">
+    <h2>2 · Probe &amp; Calculate Bitrate</h2>
+    <div class="row">
+      <div>
+        <label>Selected file</label>
+        <input type="text" id="selectedPath" placeholder="Click a file above or enter a filename" />
+      </div>
+      <div style="flex:0">
+        <button class="btn-primary" onclick="runProbe()" id="probeBtn">Probe</button>
+      </div>
+    </div>
+    <div id="probeError" class="alert alert-error hidden"></div>
+
+    <div id="metaSection" class="hidden">
+      <div class="meta-grid" id="metaGrid"></div>
+
+      <div style="margin-top:18px">
+        <label>Target size (MB)</label>
+        <input type="number" id="targetMB" value="400" min="1" style="max-width:120px" />
+        <button class="btn-primary btn-sm" onclick="runCalc()" style="margin-top:4px">Calculate</button>
+      </div>
+
+      <div id="calcError" class="alert alert-error hidden"></div>
+      <div id="calcSection" class="hidden">
+        <div class="meta-grid" id="calcGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compress -->
+  <div class="card">
+    <h2>3 · Compress</h2>
+    <div class="row">
+      <div>
+        <label>Output filename</label>
+        <input type="text" id="outputPath" placeholder="Will be auto-filled after probe &amp; calc" />
+      </div>
+      <div>
+        <label>Video bitrate (kbps)</label>
+        <input type="number" id="videoKbps" placeholder="Auto-filled" min="1" />
+      </div>
+      <div style="flex:0">
+        <button class="btn-success" onclick="startCompress()" id="compressBtn" disabled>▶ Compress</button>
+      </div>
+    </div>
+    <div id="compressError" class="alert alert-error hidden"></div>
+
+    <div id="jobSection" class="hidden">
+      <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+        <span>Status: <span id="jobState" class="status-badge status-running">running</span></span>
+        <span id="jobPercent" style="font-size:0.85rem;color:#a6adc8"></span>
+      </div>
+      <div class="progress-bar-outer"><div class="progress-bar-inner" id="progressBar" style="width:0%"></div></div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let currentProbe = null;
+  let currentCalc  = null;
+  let pollTimer    = null;
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  (async () => {
+    try {
+      const r = await fetch('/api/downloads');
+      const d = await r.json();
+      document.getElementById('downloadsPath').textContent = 'Downloads: ' + d.path;
+    } catch { document.getElementById('downloadsPath').textContent = 'Could not resolve Downloads path'; }
+    loadFiles();
+  })();
+
+  // ── File list ──────────────────────────────────────────────────────────────
+  async function loadFiles() {
+    const ext = document.getElementById('extFilter').value.trim();
+    const minMB = document.getElementById('minMB').value || 0;
+    const err = document.getElementById('fileListError');
+    err.classList.add('hidden');
+
+    try {
+      const r = await fetch(`/api/files?ext=${encodeURIComponent(ext)}&minMB=${minMB}`);
+      const files = await r.json();
+      const tbody = document.getElementById('fileTableBody');
+      if (!files.length) {
+        tbody.innerHTML = '<tr><td colspan="3" style="color:#585b70">No video files found in Downloads.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = files.map(f => `
+        <tr>
+          <td class="clickable" onclick="selectFile('${escapeHtml(f.fullPath)}')">${escapeHtml(f.name)}</td>
+          <td>${f.sizeMB}</td>
+          <td><button class="btn-sm btn-primary" onclick="selectFile('${escapeHtml(f.fullPath)}')">Select</button></td>
+        </tr>`).join('');
+    } catch(e) {
+      err.textContent = 'Failed to load files: ' + e.message;
+      err.classList.remove('hidden');
+    }
+  }
+
+  function selectFile(path) {
+    document.getElementById('selectedPath').value = path;
+    // Reset downstream sections
+    currentProbe = null;
+    currentCalc  = null;
+    document.getElementById('metaSection').classList.add('hidden');
+    document.getElementById('calcSection').classList.add('hidden');
+    document.getElementById('outputPath').value = '';
+    document.getElementById('videoKbps').value = '';
+    document.getElementById('compressBtn').disabled = true;
+    document.getElementById('jobSection').classList.add('hidden');
+  }
+
+  // ── Probe ──────────────────────────────────────────────────────────────────
+  async function runProbe() {
+    const path = document.getElementById('selectedPath').value.trim();
+    const err  = document.getElementById('probeError');
+    err.classList.add('hidden');
+
+    if (!path) { showError(err, 'Please select or enter a file.'); return; }
+
+    document.getElementById('probeBtn').disabled = true;
+    document.getElementById('metaSection').classList.add('hidden');
+
+    try {
+      const r = await fetch('/api/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      });
+      const d = await r.json();
+      if (!r.ok) { showError(err, d.error || JSON.stringify(d)); return; }
+      currentProbe = d;
+      renderMeta(d);
+      document.getElementById('metaSection').classList.remove('hidden');
+      // Auto-run calc
+      runCalc();
+    } catch(e) {
+      showError(err, 'Probe failed: ' + e.message);
+    } finally {
+      document.getElementById('probeBtn').disabled = false;
+    }
+  }
+
+  function renderMeta(d) {
+    const grid = document.getElementById('metaGrid');
+    grid.innerHTML = [
+      ['Size', formatBytes(d.sizeBytes)],
+      ['Duration', formatDuration(d.durationSeconds)],
+      ['Resolution', d.width && d.height ? `${d.width} × ${d.height}` : '—'],
+      ['Total Bitrate', d.totalBitrate_bps ? formatKbps(d.totalBitrate_bps) : '—'],
+      ['Video Bitrate', d.videoBitrate_bps ? formatKbps(d.videoBitrate_bps) : '—'],
+      ['Audio Bitrate', d.audioBitrate_bps ? formatKbps(d.audioBitrate_bps) : '—'],
+    ].map(([l, v]) => `<div class="meta-box"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('');
+  }
+
+  // ── Calc ───────────────────────────────────────────────────────────────────
+  async function runCalc() {
+    if (!currentProbe) return;
+    const err = document.getElementById('calcError');
+    err.classList.add('hidden');
+
+    const targetMB = parseInt(document.getElementById('targetMB').value) || 400;
+
+    if (!currentProbe.totalBitrate_bps) {
+      showError(err, 'Total bitrate not available from ffprobe for this file. Cannot auto-calculate.');
+      return;
+    }
+
+    try {
+      const r = await fetch('/api/calc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sizeBytes: currentProbe.sizeBytes,
+          totalBitrate_bps: currentProbe.totalBitrate_bps,
+          targetMB
+        })
+      });
+      const d = await r.json();
+      if (!r.ok) { showError(err, d.error || JSON.stringify(d)); return; }
+      currentCalc = d;
+      renderCalc(d);
+      document.getElementById('calcSection').classList.remove('hidden');
+
+      // Auto-fill compress fields
+      const kbps = d.outVideoKbps;
+      document.getElementById('videoKbps').value = kbps;
+
+      // Auto-suggest output filename
+      const inputPath = currentProbe.path;
+      const baseName  = inputPath.split(/[/\\]/).pop().replace(/\.[^/.]+$/, '');
+      const sanitized = baseName.replace(/[^a-zA-Z0-9._\- ]/g, '_');
+      document.getElementById('outputPath').value = `${sanitized}-DR-${kbps}.mp4`;
+      document.getElementById('compressBtn').disabled = false;
+    } catch(e) {
+      showError(err, 'Calc failed: ' + e.message);
+    }
+  }
+
+  function renderCalc(d) {
+    const grid = document.getElementById('calcGrid');
+    grid.innerHTML = [
+      ['Source MB (ceiling)', d.sizeMB],
+      ['Scale Factor', d.scaleCalc.toFixed(4)],
+      ['In Total Kbps', d.inTotalKbps],
+      ['Out Video Kbps', `<strong style="color:#a6e3a1">${d.outVideoKbps}</strong>`],
+    ].map(([l, v]) => `<div class="meta-box"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('');
+  }
+
+  // ── Compress ───────────────────────────────────────────────────────────────
+  async function startCompress() {
+    const err = document.getElementById('compressError');
+    err.classList.add('hidden');
+
+    const inputPath  = document.getElementById('selectedPath').value.trim();
+    const outputPath = document.getElementById('outputPath').value.trim();
+    const videoKbps  = parseInt(document.getElementById('videoKbps').value);
+
+    if (!inputPath || !outputPath || !videoKbps) {
+      showError(err, 'Input path, output filename, and video kbps are all required.');
+      return;
+    }
+
+    document.getElementById('compressBtn').disabled = true;
+    document.getElementById('jobSection').classList.remove('hidden');
+
+    try {
+      const r = await fetch('/api/compress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputPath, outputPath, videoKbps })
+      });
+      const d = await r.json();
+      if (!r.ok) { showError(err, d.error || JSON.stringify(d)); return; }
+      pollJob(d.jobId);
+    } catch(e) {
+      showError(err, 'Compress request failed: ' + e.message);
+      document.getElementById('compressBtn').disabled = false;
+    }
+  }
+
+  function pollJob(jobId) {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/jobs/${jobId}`);
+        const d = await r.json();
+        updateJobUI(d);
+        if (d.state === 'running') pollJob(jobId);
+        else document.getElementById('compressBtn').disabled = false;
+      } catch { pollJob(jobId); }
+    }, 1500);
+  }
+
+  function updateJobUI(d) {
+    const stateEl   = document.getElementById('jobState');
+    const pctEl     = document.getElementById('jobPercent');
+    const barEl     = document.getElementById('progressBar');
+    const logEl     = document.getElementById('logBox');
+
+    stateEl.textContent = d.state;
+    stateEl.className   = 'status-badge status-' + d.state;
+
+    if (d.percent != null) {
+      pctEl.textContent = d.percent + '%';
+      barEl.style.width = d.percent + '%';
+    } else if (d.state === 'running') {
+      pctEl.textContent = 'running…';
+    }
+    if (d.state === 'completed') { barEl.style.width = '100%'; pctEl.textContent = '100%'; }
+
+    if (d.logTail) {
+      logEl.textContent = d.logTail;
+      logEl.scrollTop   = logEl.scrollHeight;
+    }
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function showError(el, msg) { el.textContent = msg; el.classList.remove('hidden'); }
+  function formatBytes(b) {
+    if (b >= 1073741824) return (b/1073741824).toFixed(2)+' GB';
+    if (b >= 1048576)    return (b/1048576).toFixed(2)+' MB';
+    return (b/1024).toFixed(1)+' KB';
+  }
+  function formatKbps(bps) { return Math.round(bps/1000)+' kbps'; }
+  function formatDuration(s) {
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
+    return [h>0?h+'h':'', m+'m', sec+'s'].filter(Boolean).join(' ');
+  }
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+              .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+</script>
+</body>
+</html>
