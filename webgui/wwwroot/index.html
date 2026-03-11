@@ -7,9 +7,12 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Arial, sans-serif; background: #1e1e2e; color: #cdd6f4; min-height: 100vh; }
-    header { background: #313244; padding: 18px 28px; display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #89b4fa; }
+    header { background: #313244; padding: 18px 28px; display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #89b4fa; flex-wrap: wrap; justify-content: space-between; }
     header h1 { font-size: 1.4rem; color: #89b4fa; }
     header small { color: #a6adc8; font-size: 0.85rem; }
+    .url-info { font-size: 0.8rem; color: #a6adc8; display: flex; flex-direction: column; gap: 2px; text-align: right; }
+    .url-info a { color: #89b4fa; text-decoration: none; }
+    .url-info a:hover { text-decoration: underline; }
     .container { max-width: 920px; margin: 32px auto; padding: 0 20px; }
     .card { background: #313244; border-radius: 10px; padding: 24px; margin-bottom: 24px; border: 1px solid #45475a; }
     .card h2 { font-size: 1.1rem; color: #cba6f7; margin-bottom: 16px; border-bottom: 1px solid #45475a; padding-bottom: 8px; }
@@ -63,6 +66,7 @@
     <h1>🎬 CMR Compression Toolkit</h1>
     <small id="downloadsPath">Loading downloads path…</small>
   </div>
+  <div class="url-info" id="urlInfo"></div>
 </header>
 
 <div class="container">
@@ -158,6 +162,24 @@
 
   // ── Init ───────────────────────────────────────────────────────────────────
   (async () => {
+    // Build access URLs dynamically from the current page location
+    const port = window.location.port ? `:${window.location.port}` : '';
+    const proto = window.location.protocol;
+    const localUrl   = window.location.origin;
+    const networkUrl = `${proto}//cmrcomptool${port}`;
+    const ui = document.getElementById('urlInfo');
+    const makeLink = (href, label) => {
+      const a = document.createElement('a');
+      a.href = href; a.target = '_blank'; a.textContent = href;
+      const span = document.createElement('span');
+      span.appendChild(document.createTextNode('🌐 '));
+      span.appendChild(a);
+      span.appendChild(document.createTextNode(` ${label}`));
+      ui.appendChild(span);
+    };
+    makeLink(localUrl, '(this machine)');
+    makeLink(networkUrl, '(network)');
+
     try {
       const r = await fetch('/api/downloads');
       const d = await r.json();
