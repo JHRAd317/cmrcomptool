@@ -16,9 +16,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Open browser once port 5000 is ready (polls every second, up to 30s)
+REM Open browser to the canonical URL once port 5000 is ready (polls every second, up to 30s)
 start "" powershell -NoProfile -Command ^
-  "$url='http://localhost:5000'; for($i=0;$i -lt 30;$i++){try{$r=(Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop).StatusCode;if($r -lt 500){Start-Process $url;break}}catch{};Start-Sleep 1}"
+  "$poll='http://localhost:5000'; $open='http://cmrcomptool:5000'; for($i=0;$i -lt 30;$i++){try{$r=(Invoke-WebRequest $poll -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop).StatusCode;if($r -lt 500){Start-Process $open;break}}catch{};Start-Sleep 1}"
 
 REM Start the app
 cd /d "%~dp0webgui"
