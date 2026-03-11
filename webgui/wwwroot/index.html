@@ -356,7 +356,6 @@
 
   function pollJob(jobId) {
     clearTimeout(pollTimer);
-    // Guard: skip if already polling a different job
     pollTimer = setTimeout(async () => {
       try {
         const r = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);

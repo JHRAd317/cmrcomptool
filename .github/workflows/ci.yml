@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build:
+    name: Build & Publish
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore webgui/CmrCompTool.WebGui.csproj
+
+      - name: Build
+        run: dotnet build webgui/CmrCompTool.WebGui.csproj --no-restore -c Release
+
+      - name: Publish (self-contained, Windows x64)
+        run: >
+          dotnet publish webgui/CmrCompTool.WebGui.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish/win-x64
+
+      - name: Zip publish output
+        shell: pwsh
+        run: |
+          # Keep only runtime files needed to run the app
+          Remove-Item publish/win-x64/*.pdb -ErrorAction SilentlyContinue
+          Remove-Item publish/win-x64/web.config -ErrorAction SilentlyContinue
+          Compress-Archive -Path publish/win-x64/* -DestinationPath CmrCompTool-win-x64.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CmrCompTool-win-x64
+          path: CmrCompTool-win-x64.zip
+          if-no-files-found: error

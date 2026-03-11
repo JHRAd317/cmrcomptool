@@ -28,14 +28,7 @@ public class FfprobeService
         _logger.LogInformation("Running ffprobe on {Path}", filePath);
 
         string output;
-        try
-        {
-            output = await RunProcessAsync("ffprobe", args, ct);
-        }
-        catch (InvalidOperationException)
-        {
-            throw;
-        }
+        output = await RunProcessAsync("ffprobe", args, ct);
 
         using var doc = JsonDocument.Parse(output);
         var root = doc.RootElement;

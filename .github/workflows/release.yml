@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish & Release
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore webgui/CmrCompTool.WebGui.csproj
+
+      - name: Publish (self-contained, Windows x64)
+        run: >
+          dotnet publish webgui/CmrCompTool.WebGui.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish/win-x64
+
+      - name: Zip publish output
+        shell: pwsh
+        run: |
+          # Keep only runtime files needed to run the app
+          Remove-Item publish/win-x64/*.pdb -ErrorAction SilentlyContinue
+          Remove-Item publish/win-x64/web.config -ErrorAction SilentlyContinue
+          Compress-Archive -Path publish/win-x64/* -DestinationPath CmrCompTool-win-x64.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "CMR Compression Toolkit ${{ github.ref_name }}"
+          body: |
+            ## CMR Compression Toolkit – Web GUI ${{ github.ref_name }}
+
+            ### Quick install (no .NET SDK required)
+            1. Download **CmrCompTool-win-x64.zip** below and extract it to any folder (e.g. `C:\Tools\CmrCompTool`).
+            2. Install **ffmpeg** if you haven't already:
+               ```
+               winget install ffmpeg
+               ```
+            3. Double-click `CmrCompTool.WebGui.exe` — the browser opens `http://localhost:5000` automatically.
+
+            > The app reads/writes your Windows account's **Downloads** folder.  
+            > The .NET 8 runtime is bundled — no SDK installation required.
+
+            See [webgui/README.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/webgui/README.md) for full setup instructions.
+          files: CmrCompTool-win-x64.zip
+          draft: false
+          prerelease: false

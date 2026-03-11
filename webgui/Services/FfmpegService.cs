@@ -87,7 +87,7 @@ public class FfmpegService
             process.StartInfo.ArgumentList.Add(arg);
 
         // ffmpeg logs to stderr; capture it for progress
-        var logLines = new System.Collections.Generic.Queue<string>();
+        var logLines = new Queue<string>();
 
         try
         {
@@ -162,8 +162,8 @@ public class FfmpegService
     {
         var current = status.LogTail;
         var lines = string.IsNullOrEmpty(current)
-            ? new System.Collections.Generic.List<string>()
-            : new System.Collections.Generic.List<string>(current.Split('\n'));
+            ? new List<string>()
+            : new List<string>(current.Split('\n'));
         lines.Add(message);
         if (lines.Count > 50) lines.RemoveAt(0);
         status.LogTail = string.Join("\n", lines);

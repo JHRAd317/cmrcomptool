@@ -5,9 +5,22 @@ with a browser-based interface backed by **ffprobe** and **ffmpeg**.
 
 ---
 
-## Prerequisites
+## Option A — Pre-built zip (recommended, no SDK required)
 
-### 1. Install ffmpeg (includes ffprobe)
+1. Go to the [Releases](../../releases) page and download `CmrCompTool-win-x64.zip`.
+2. Extract to any folder (e.g. `C:\Tools\CmrCompTool`).
+3. Install ffmpeg (if not already installed — see [Install ffmpeg](#1-install-ffmpeg-includes-ffprobe) below).
+4. Double-click `CmrCompTool.WebGui.exe`. The browser opens `http://localhost:5000` automatically.
+
+> The self-contained exe bundles the .NET 8 runtime — no SDK install needed.
+
+---
+
+## Option B — Run from source
+
+### Prerequisites
+
+#### 1. Install ffmpeg (includes ffprobe)
 
 **Windows**
 ```
@@ -21,7 +34,7 @@ ffmpeg -version
 ffprobe -version
 ```
 
-### 2. Install .NET 8 SDK
+#### 2. Install .NET 8 SDK
 
 Download from <https://dot.net> → Download .NET 8 SDK.
 
@@ -35,7 +48,14 @@ dotnet --version
 
 ## Running the app
 
-```bash
+**One-click (from repo root):**
+```bat
+run.bat
+```
+This starts the server and opens `http://localhost:5000` in your browser automatically.
+
+**Manual:**
+```bat
 cd webgui
 dotnet run
 ```
