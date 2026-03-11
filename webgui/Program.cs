@@ -93,7 +93,7 @@ app.MapPost("/api/compress", (CompressRequest req, DownloadsService dl, FfmpegSe
         if (req.VideoKbps <= 0)
             return Results.BadRequest(new { error = "videoKbps must be positive." });
 
-        var status = ffmpeg.StartCompress(safeInput, safeOutput, req.VideoKbps);
+        var status = ffmpeg.StartCompress(safeInput, safeOutput, req.VideoKbps, req.DurationSeconds);
         return Results.Ok(new { jobId = status.JobId });
     }
     catch (UnauthorizedAccessException ex)

@@ -343,7 +343,7 @@
       const r = await fetch('/api/compress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputPath, outputPath, videoKbps })
+        body: JSON.stringify({ inputPath, outputPath, videoKbps, durationSeconds: currentProbe?.durationSeconds ?? null })
       });
       const d = await r.json();
       if (!r.ok) { showError(err, d.error || JSON.stringify(d)); return; }

@@ -16,7 +16,7 @@ public class FfmpegService
         _logger = logger;
     }
 
-    public JobStatus StartCompress(string inputPath, string outputPath, int videoKbps)
+    public JobStatus StartCompress(string inputPath, string outputPath, int videoKbps, double? durationSeconds = null)
     {
         PurgeOldJobs();
 
@@ -28,8 +28,9 @@ public class FfmpegService
         {
             try
             {
-                await RunFfmpegAsync(inputPath, outputPath, videoKbps, status);
+                await RunFfmpegAsync(inputPath, outputPath, videoKbps, status, durationSeconds);
                 status.State = JobState.Completed;
+                status.Percent = 100;
             }
             catch (Exception ex)
             {
@@ -55,7 +56,7 @@ public class FfmpegService
         }
     }
 
-    private async Task RunFfmpegAsync(string inputPath, string outputPath, int videoKbps, JobStatus status)
+    private async Task RunFfmpegAsync(string inputPath, string outputPath, int videoKbps, JobStatus status, double? durationSeconds)
     {
         // Build ffmpeg args: H.264 + AAC MP4 with bitrate-based video
         var arguments = new[]
@@ -124,8 +125,21 @@ public class FfmpegService
                             logLines.Enqueue(line);
                             while (logLines.Count > 50) logLines.Dequeue();
                         }
-                        // Try to parse percent from "time=" in ffmpeg output
-                        // ffmpeg doesn't directly give percent; we just stream lines
+                        // Parse "time=HH:MM:SS.ss" from ffmpeg progress lines
+                        if (durationSeconds.HasValue && durationSeconds.Value > 0)
+                        {
+                            var timeMatch = System.Text.RegularExpressions.Regex.Match(
+                                line, @"time=(\d+):(\d+):(\d+(?:\.\d+)?)");
+                            if (timeMatch.Success)
+                            {
+                                var elapsed = int.Parse(timeMatch.Groups[1].Value) * 3600.0
+                                            + int.Parse(timeMatch.Groups[2].Value) * 60.0
+                                            + double.Parse(timeMatch.Groups[3].Value,
+                                                System.Globalization.CultureInfo.InvariantCulture);
+                                var pct = (int)Math.Min(99, Math.Round(elapsed / durationSeconds.Value * 100));
+                                status.Percent = pct;
+                            }
+                        }
                     }
                     sb.Clear();
                     sb.Append(text[(newlineIdx + 1)..]);
