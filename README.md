@@ -3,6 +3,9 @@
 Local web-based GUI for compressing video files using **ffprobe** and **ffmpeg**.  
 Files are read from (and written back to) the current Windows user's **Downloads** folder.
 
+> **🌐 URL:** Once the app is running, open **http://localhost:5000** in your browser.  
+> `run.bat` (Windows) starts the server **and** opens that URL automatically.
+
 ---
 
 ## Quick start — pre-built zip (no SDK required)

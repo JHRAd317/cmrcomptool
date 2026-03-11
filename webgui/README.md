@@ -3,6 +3,8 @@
 A local ASP.NET Core web application that replaces the original PowerShell/WinForms GUI
 with a browser-based interface backed by **ffprobe** and **ffmpeg**.
 
+> **🌐 URL:** Once the app is running, open **http://localhost:5000** in your browser.
+
 ---
 
 ## Option A — Pre-built zip (recommended, no SDK required)
