@@ -3,7 +3,11 @@
 A local ASP.NET Core web application that replaces the original PowerShell/WinForms GUI
 with a browser-based interface backed by **ffprobe** and **ffmpeg**.
 
-> **🌐 URL:** Once the app is running, open **http://localhost:5000** in your browser.
+> **🌐 URL (local):** **http://localhost:5000**  
+> **🌐 URL (network):** **http://cmrcomptool:5000** — accessible from other LAN machines via `\\cmrcomptool`
+>
+> ⚠️ **Security note:** The server listens on all network interfaces and has no authentication.  
+> Only run it on a trusted private network. Anyone on your LAN can access your Downloads folder through the API.
 
 ---
 
@@ -65,12 +69,15 @@ dotnet run
 The console will print something like:
 
 ```
-Now listening on: http://localhost:5000
+Now listening on: http://[::]:5000
 ```
 
-Open that URL in your browser.
+Open **http://localhost:5000** (local) or **http://cmrcomptool:5000** (from another machine on the LAN) in your browser.
 
-> **Note:** The app runs as _the same Windows user account_ that launched it.
+> **Note:** The app listens on all network interfaces (port 5000), so it is reachable from
+> other machines on the LAN at `http://cmrcomptool:5000`.  
+> If Windows Firewall prompts you when first running, click **Allow access**.  
+> The app runs as _the same Windows user account_ that launched it.
 > It will read and write files in **that user's `%USERPROFILE%\Downloads`** folder.
 > Do not run the app as a different user or as a service account unless that account
 > has the Downloads folder you intend to use.

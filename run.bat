@@ -2,8 +2,9 @@
 setlocal
 
 REM ── CMR Compression Toolkit – Local Launcher ──────────────────────────────
-REM  Starts the ASP.NET Core web GUI on http://localhost:5000 and opens the
-REM  browser once the server is ready.
+REM  Starts the ASP.NET Core web GUI on all interfaces (port 5000).
+REM  Local access:   http://localhost:5000
+REM  Network access: http://cmrcomptool:5000
 REM  Requires .NET 8 SDK (https://dot.net) and ffmpeg in PATH.
 REM ──────────────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,6 @@ start "" powershell -NoProfile -Command ^
 
 REM Start the app
 cd /d "%~dp0webgui"
-dotnet run --no-launch-profile --urls http://localhost:5000
+dotnet run --no-launch-profile --urls http://*:5000
 
 pause

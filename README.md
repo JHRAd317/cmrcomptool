@@ -3,8 +3,12 @@
 Local web-based GUI for compressing video files using **ffprobe** and **ffmpeg**.  
 Files are read from (and written back to) the current Windows user's **Downloads** folder.
 
-> **🌐 URL:** Once the app is running, open **http://localhost:5000** in your browser.  
-> `run.bat` (Windows) starts the server **and** opens that URL automatically.
+> **🌐 URL (local):** **http://localhost:5000**  
+> **🌐 URL (network):** **http://cmrcomptool:5000** — accessible from other machines on the LAN via `\\cmrcomptool`  
+> `run.bat` (Windows) starts the server **and** opens the local URL automatically.
+>
+> ⚠️ **Security note:** The server listens on all network interfaces and has no authentication.  
+> Only run it on a trusted private network. Anyone on your LAN can access your Downloads folder through the API.
 
 ---
 
@@ -35,7 +39,7 @@ Or start manually:
 
 ```bat
 cd webgui
-dotnet run --no-launch-profile --urls http://localhost:5000
+dotnet run --no-launch-profile --urls http://*:5000
 ```
 
 ---
